@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # Zdrowie w Twoim Mieście — React + Node.js + SQLite
 
 Realizacja etapu II, punktów 2.1 i 2.2. React (Vite) jest frontendem, Express backendem JS, a SQLite lokalną bazą danych.
@@ -35,3 +36,6 @@ Backend ma timeout 8 s, obsługę HTTP/błędów JSON i cache odpowiedzi w SQLit
 
 ## Uwagi
 Wymaga dostępu do internetu dla NFZ i GUS. Przed produkcyjnym wdrożeniem należy rozszerzyć walidację, autoryzację, testy integracyjne, paginację oraz mapowanie wyników. Punkt 2.3 (czyszczenie i parsowanie danych) i pełny CRUD z 2.4 nie są objęte tym etapem.
+=======
+# ZdrowieWTwoimMiescie
+>>>>>>> c7bd5ae6a5f279b143556254b1f255bcbd3c584d
