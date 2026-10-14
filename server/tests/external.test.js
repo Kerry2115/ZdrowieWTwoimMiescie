@@ -1,0 +1,74 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { db } from '../src/db.js';
+import { ApiError, cachedJson } from '../src/external.js';
+import { runMigrations } from '../src/migrations.js';
+
+test('cache współdzieli równoległe żądanie i ogranicza ponowne pobrania', async () => {
+  runMigrations(db);
+  const url = 'https://api.example.test/cache-single-flight';
+  const key = new URL(url).toString();
+  db.prepare('DELETE FROM api_cache WHERE cache_key = ?').run(key);
+  const originalFetch = globalThis.fetch;
+  let requests = 0;
+
+  globalThis.fetch = async () => {
+    requests += 1;
+    await new Promise(resolve => setTimeout(resolve, 15));
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({ results: [{ id: 'one' }] })
+    };
+  };
+
+  try {
+    const [first, second] = await Promise.all([
+      cachedJson(url, {}),
+      cachedJson(url, {})
+    ]);
+    const third = await cachedJson(url, {});
+    assert.deepEqual(first, { results: [{ id: 'one' }] });
+    assert.deepEqual(second, first);
+    assert.deepEqual(third, first);
+    assert.equal(requests, 1);
+  } finally {
+    globalThis.fetch = originalFetch;
+    db.prepare('DELETE FROM api_cache WHERE cache_key = ?').run(key);
+  }
+});
+
+test('zewnętrzne błędy HTTP i nieprawidłowy JSON nie są zapisywane w cache', async () => {
+  runMigrations(db);
+  const originalFetch = globalThis.fetch;
+  const httpUrl = 'https://api.example.test/http-error';
+  const jsonUrl = 'https://api.example.test/invalid-json';
+  const keys = [httpUrl, jsonUrl].map(url => new URL(url).toString());
+  let mode = 'http';
+
+  globalThis.fetch = async () => {
+    if (mode === 'http') return { ok: false, status: 503 };
+    return {
+      ok: true,
+      status: 200,
+      json: async () => { throw new SyntaxError('invalid json'); }
+    };
+  };
+
+  try {
+    await assert.rejects(cachedJson(httpUrl, {}), error =>
+      error instanceof ApiError && error.status === 502
+    );
+    mode = 'json';
+    await assert.rejects(cachedJson(jsonUrl, {}), error =>
+      error instanceof ApiError && error.status === 502
+    );
+    assert.equal(
+      db.prepare('SELECT COUNT(*) AS count FROM api_cache WHERE cache_key IN (?, ?)').get(...keys).count,
+      0
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+    db.prepare('DELETE FROM api_cache WHERE cache_key IN (?, ?)').run(...keys);
+  }
+});

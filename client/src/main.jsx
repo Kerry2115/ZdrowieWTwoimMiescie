@@ -47,7 +47,7 @@ function App(){
    const params=new URLSearchParams({province,benefit:benefit.trim(),limit:'10',page:String(nextPage),case:'1'});
    const response=await fetch(`/api/nfz/queues?${params}`);
    const data=await response.json();
-   if(!response.ok)throw new Error(data.error||`Błąd HTTP ${response.status}`);
+   if(!response.ok)throw new Error(data.error?.message||`Błąd HTTP ${response.status}`);
    if(!Array.isArray(data.data))throw new Error('API NFZ zwróciło niepoprawne dane');
    setResult(data);setPage(nextPage);
   }catch(err){setError(err.message||'Nie udało się pobrać danych');setResult(null)}
