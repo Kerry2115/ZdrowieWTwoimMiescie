@@ -35,7 +35,5 @@ Plik `server/data/zwtm.db` powstaje lokalnie. Migracje SQL są w `server/migrati
 Backend ma timeout 8 s, obsługę HTTP/błędów JSON i cache odpowiedzi w SQLite (TTL 15 min). Cache obejmuje identyczne zapytania po URL. Wersja demonstracyjna nie zapisuje automatycznie wyników NFZ/GUS do tabel placówek. CeZ/Rejestr Aptek pozostaje do wdrożenia po potwierdzeniu aktualnego publicznego endpointu.
 
 ## Uwagi
-Wymaga dostępu do internetu dla NFZ i GUS. Przed produkcyjnym wdrożeniem należy rozszerzyć walidację, autoryzację, testy integracyjne, paginację oraz mapowanie wyników. Punkt 2.3 (czyszczenie i parsowanie danych) i pełny CRUD z 2.4 nie są objęte tym etapem.
-=======
-# ZdrowieWTwoimMiescie
->>>>>>> c7bd5ae6a5f279b143556254b1f255bcbd3c584d
+Wymaga dostępu do internetu dla NFZ i GUS. Punkt 2.3 (czyszczenie i parsowanie danych) i pełny CRUD z 2.4 nie są objęte tym etapem.
+
