@@ -2,20 +2,15 @@
 
 Realizacja etapu II, punktów 2.1–2.4. React (Vite) jest frontendem, Express backendem JS, a SQLite lokalną bazą danych.
 
-## Wymagania
-Node.js 22+ (zalecane LTS), npm. Nie potrzeba Pythona ani osobnego serwera SQL.
+## Uruchomienie
 
-## Uruchomienie w PowerShell
+Wymagany Node.js 22+ i npm. W folderze projektu:
+
 ```powershell
 npm install
 npm run install:all
-cd server
-npm run migrate
-npm run seed
-cd ..
 npm run dev
 ```
-Otwórz http://localhost:5173 (API na http://localhost:3001/api/health).
 
 ## Testy
 Uruchom z katalogu głównego projektu poleceniem `npm test`. Testy obejmują REST API, walidację i obsługę błędów, normalizację danych, cache integracji oraz utworzenie bazy i danych demonstracyjnych od zera.
