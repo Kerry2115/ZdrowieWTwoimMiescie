@@ -1,7 +1,8 @@
 import express from 'express';
 import cors from 'cors';
 import { db } from './db.js';
-import { nfzQueues, gusUnits } from './external.js';
+import { accounts } from './accounts.js';
+import { nfzBenefits, nfzQueue, nfzQueues, gusUnits } from './external.js';
 import {
   normalizeGusUnits,
   normalizeNfzQueues,
@@ -106,14 +107,15 @@ function nfzParameters(query) {
   if (!query || typeof query !== 'object' || Array.isArray(query)) {
     throw new HttpError(400, 'INVALID_BODY', 'Parametry NFZ muszą być obiektem JSON');
   }
-  const allowed = ['province', 'benefit', 'case', 'limit', 'page'];
+  const allowed = ['province', 'benefit', 'case', 'limit', 'page', 'locality'];
   if (Object.keys(query).some(key => !allowed.includes(key))) {
     throw new HttpError(400, 'INVALID_QUERY', 'Zapytanie zawiera nieznany parametr');
   }
 
   const provinceValue = String(query.province ?? '07').trim();
   const benefitValue = String(query.benefit ?? '').trim();
-  const limitValue = String(query.limit ?? '50').trim();
+  const localityValue = query.locality ?? '';
+  const limitValue = String(query.limit ?? '25').trim();
   const pageValue = String(query.page ?? '1').trim();
   const caseValue = String(query.case ?? '1').trim();
 
@@ -121,11 +123,13 @@ function nfzParameters(query) {
     /^(0[1-9]|1[0-6])$/.test(provinceValue) &&
     /^\d+$/.test(limitValue) &&
     Number(limitValue) >= 1 &&
-    Number(limitValue) <= 100 &&
+    Number(limitValue) <= 25 &&
     /^[1-9]\d*$/.test(pageValue) &&
     Number.isSafeInteger(Number(pageValue)) &&
     ['1', '2'].includes(caseValue) &&
-    benefitValue.length <= 150;
+    benefitValue.length <= 150 &&
+    typeof localityValue === 'string' &&
+    localityValue.trim().length <= 150;
 
   if (!valid) {
     throw new HttpError(400, 'INVALID_QUERY', 'Nieprawidłowe parametry zapytania');
@@ -136,7 +140,8 @@ function nfzParameters(query) {
     case: caseValue,
     limit: limitValue,
     page: pageValue,
-    ...(benefitValue ? { benefit: benefitValue } : {})
+    ...(benefitValue ? { benefit: benefitValue } : {}),
+    ...(localityValue.trim() ? { locality: localityValue.trim() } : {})
   };
 }
 
@@ -171,6 +176,7 @@ function gusName(value) {
 
 app.use(cors({ origin: process.env.CLIENT_ORIGIN || 'http://localhost:5173' }));
 app.use(express.json({ limit: '100kb', strict: true }));
+app.use('/api', accounts);
 
 app.get('/api/health', (_req, res) => {
   res.json({ data: { ok: true, database: 'sqlite' } });
@@ -256,6 +262,34 @@ app.get('/api/nfz/queues', async (req, res, next) => {
         rejected: result.rejected
       }
     });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get('/api/nfz/queues/:id', async (req, res, next) => {
+  try {
+    if (!req.params.id || req.params.id.length > 100) {
+      throw new HttpError(400, 'INVALID_ID', 'Nieprawidłowy identyfikator placówki');
+    }
+    const result = await nfzQueue(req.params.id);
+    res.json({ data: result.data });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get('/api/nfz/benefits', async (req, res, next) => {
+  try {
+    const name = req.query.name ?? 'PORADNIA';
+    if (typeof name !== 'string' || name.trim().length > 250) {
+      throw new HttpError(400, 'INVALID_QUERY', 'Nieprawidłowa nazwa świadczenia');
+    }
+    const result = await nfzBenefits({ name: name.trim() });
+    if (!Array.isArray(result.data) || result.data.some(item => typeof item !== 'string')) {
+      throw new HttpError(502, 'UPSTREAM_INVALID_RESPONSE', 'API NFZ zwróciło nieprawidłową listę świadczeń');
+    }
+    res.json({ data: result.data });
   } catch (error) {
     next(error);
   }

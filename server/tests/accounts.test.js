@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 process.env.DB_PATH = ':memory:';
 const { app } = await import('../src/app.js');
 const { db } = await import('../src/db.js');
+const { runMigrations } = await import('../src/migrations.js');
+runMigrations(db);
 const server = app.listen(0, '127.0.0.1');
 await new Promise(resolve => server.on('listening', resolve));
 const base = `http://127.0.0.1:${server.address().port}/api`;
@@ -14,6 +16,7 @@ async function request(path, method='GET', body, cookie) {
 function cache(path, params, data) {
  const url=new URL('https://api.nfz.gov.pl/app-itl-api/'+path);
  for(const [k,v] of Object.entries(params))url.searchParams.set(k,v);
+ url.searchParams.sort();
  db.prepare('INSERT OR REPLACE INTO api_cache(cache_key,payload,expires_at) VALUES(?,?,?)').run(url.toString(),JSON.stringify(data),new Date(Date.now()+60000).toISOString());
 }
 let cookie;
@@ -49,9 +52,9 @@ test('Ulubione pobiera z NFZ, zapisuje idempotentnie i izoluje między kontami',
  assert.equal((await request('/favorites','GET',null,cookie)).body.data.length,0);
 });
 test('Przekazuje miasto do NFZ przed paginacją i waliduje limit',async()=>{
- cache('queues',{format:'json',case:'1',province:'15',limit:'10',page:'1',locality:'Poznań',benefit:'KARDIOLOGIA'},{data:[item],meta:{count:1}});
+ cache('queues',{format:'json',case:'1',province:'15',limit:'25',page:'1',locality:'Poznań',benefit:'KARDIOLOGIA'},{data:[item],meta:{count:1}});
  const r=await request('/nfz/queues?province=15&locality=Pozna%C5%84&benefit=KARDIOLOGIA');
- assert.equal(r.status,200);assert.equal(r.body.data[0].id,id);
+ assert.equal(r.status,200,JSON.stringify(r.body));assert.equal(r.body.data[0].id,id);
  assert.equal((await request('/nfz/queues?limit=26')).status,400);
  assert.equal((await request('/nfz/queues?page=999999999999999999')).status,400);
 });

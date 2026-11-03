@@ -15,8 +15,10 @@ npm run dev
 ## Testy
 Uruchom z katalogu głównego projektu poleceniem `npm test`. Testy obejmują REST API, walidację i obsługę błędów, normalizację danych, cache integracji oraz utworzenie bazy i danych demonstracyjnych od zera.
 
+Testy integracji zewnętrznych sprawdzają odpowiedzi HTTP i JSON, zerwane połączenie oraz timeout (8 s). Testy korzystają z kontrolowanych odpowiedzi i nie wysyłają żądań do NFZ ani GUS.
+
 ## Baza
-Plik `server/data/zwtm.db` powstaje lokalnie. Migracje SQL są w `server/migrations`, skrypt `npm run migrate` prowadzi ewidencję zastosowanych migracji. Tabele: users, facilities, services, favorites, saved_searches, alerts, gus_units, local_statistics, api_cache. Klucze obce są włączone. Dane demonstracyjne są fikcyjne.
+Plik `server/data/zwtm.db` powstaje lokalnie. Serwer automatycznie stosuje migracje SQL z `server/migrations` przy uruchomieniu; skrypt `npm run migrate` można też uruchomić ręcznie. Tabele: users, facilities, services, favorites, saved_searches, alerts, gus_units, local_statistics, api_cache. Klucze obce są włączone. Dane demonstracyjne są fikcyjne.
 
 SQLite wybrano jako lokalną, plikową bazę danych, aby projekt można było uruchomić bez osobnej usługi bazy. Główne relacje: `services.facility_id` wskazuje placówkę, ulubione łączą użytkowników z placówkami, zapisane wyszukiwania należą do użytkowników, a alerty odwołują się do zapisanych wyszukiwań i użytkowników. Klucze unikalne zapobiegają duplikowaniu placówek dla tego samego źródła i identyfikatora oraz powtarzaniu tej samej specjalności w obrębie jednej placówki. Klucze obce są włączone, a usunięcie placówki usuwa powiązane usługi i ulubione.
 
@@ -36,6 +38,8 @@ Migracje można bezpiecznie uruchamiać wielokrotnie. Każda zastosowana migracj
 - `GET /api/health` → stan serwera
 
 Odpowiedzi sukcesu używają pola `data`. Błędy mają format `{ "error": { "code": "...", "message": "..." } }`. Tworzenie i pełna aktualizacja placówki wymagają pól `source`, `external_id`, `name` i `type`; pola `city`, `street`, `postal_code`, `phone`, `latitude` i `longitude` są opcjonalne. `PUT` zastępuje całą placówkę, a pominięte pola opcjonalne ustawia na `null`; `PATCH` zmienia tylko podane pola.
+
+Interfejs pokazuje wyniki NFZ w postaci kart z terminem, adresem i kontaktem. Widok „Mapa placówek” wyświetla na mapie OpenStreetMap wyniki ostatniego wyszukiwania, dla których NFZ udostępnił współrzędne; pozostałe placówki są dostępne na liście pod mapą. Wyświetlenie kafelków mapy wymaga połączenia z internetem.
 
 ### Przetwarzanie danych z API
 Moduł `server/src/data-processing.js` normalizuje wyniki NFZ i GUS przed zwróceniem ich klientowi. Dla NFZ oczyszcza tekst, sprawdza rekordy i współrzędne, normalizuje datę oraz oznacza liczbę odrzuconych rekordów. Niepoprawne współrzędne i brakujące wartości opcjonalne są zamieniane na `null`; rekord NFZ bez poprawnej struktury lub nazwy placówki jest pomijany. Wyniki GUS są sprawdzane pod kątem listy jednostek, identyfikatora i nazwy. Odpowiedź API zawiera podsumowanie `normalization.accepted` i `normalization.rejected`.

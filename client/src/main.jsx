@@ -1,5 +1,8 @@
 import React, {useEffect, useRef, useState} from 'react';
 import {createRoot} from 'react-dom/client';
+import L from 'leaflet';
+import {MapContainer, Marker, Popup, TileLayer} from 'react-leaflet';
+import 'leaflet/dist/leaflet.css';
 import './style.css';
 
 const provinces = ['Dolnośląskie','Kujawsko-pomorskie','Lubelskie','Lubuskie','Łódzkie','Małopolskie','Mazowieckie','Opolskie','Podkarpackie','Podlaskie','Pomorskie','Śląskie','Świętokrzyskie','Warmińsko-mazurskie','Wielkopolskie','Zachodniopomorskie'];
@@ -12,7 +15,7 @@ function Icon({name, size=20, ...props}) {
 async function api(path, options={}) {
  const res = await fetch(`/api${path}`, {...options, credentials:'same-origin', headers:{'Content-Type':'application/json', ...options.headers}});
  let json; try { json = await res.json(); } catch { throw new Error('Serwer nie zwrócił poprawnej odpowiedzi. Spróbuj ponownie.'); }
- if(!res.ok) {const error = new Error(json.error||'Nie udało się wykonać operacji.'); error.status=res.status; throw error;}
+ if(!res.ok) {const error = new Error(json.error?.message||json.error||'Nie udało się wykonać operacji.'); error.status=res.status; throw error;}
  return json;
 }
 function phoneHref(raw) { const text=String(raw); const extension=/(?:wew\.?|ext\.?)\s*(\d+)/i.exec(text)?.[1]; const number=text.split(/wew\.?|ext\.?|[,;\/]/i)[0].replace(/[^+\d]/g,''); return 'tel:'+number+(extension?';ext='+extension:''); }
@@ -34,6 +37,24 @@ function FacilityCard({item, saved, onSave, onOpen, busy}) {
  const a=item.attributes||{};
  return <article className="facility-card"><div className="facility-main"><div className="facility-top"><span className="badge">Świadczenie NFZ</span><button className={`icon-button heart ${saved?'is-saved':''}`} aria-label={saved?'Usuń z ulubionych':'Dodaj do ulubionych'} aria-pressed={saved} disabled={busy} onClick={()=>onSave(item)}><Icon name="heart"/></button></div><h3>{a.provider||a.place||'Placówka medyczna'}</h3><p className="specialty">{a.benefit||'Świadczenie medyczne'}</p><div className="address"><Icon name="pin" size={17}/><span>{[a.address,a.locality].filter(Boolean).join(', ')||'Adres niedostępny'}</span></div>{a.phone&&<a className="contact" href={phoneHref(a.phone)}><Icon name="phone" size={16}/>{a.phone}</a>}</div><div className="facility-side"><Waiting a={a}/><button className="button secondary detail-button" onClick={()=>onOpen(item)}>Szczegóły placówki<Icon name="arrow" size={17}/></button></div></article>;
 }
+function FacilityMap({items, onOpen}) {
+ const located=items.filter(item=>{
+  const {latitude,longitude}=item.attributes||{};
+  return Number.isFinite(latitude)&&Number.isFinite(longitude)&&Math.abs(latitude)<=90&&Math.abs(longitude)<=180;
+ });
+ if(!located.length)return null;
+ const center=[
+  located.reduce((sum,item)=>sum+item.attributes.latitude,0)/located.length,
+  located.reduce((sum,item)=>sum+item.attributes.longitude,0)/located.length
+ ];
+ const markerIcon=L.divIcon({className:'facility-map-marker',html:'<span></span>',iconSize:[24,24],iconAnchor:[12,12]});
+ return <MapContainer className="facility-map-view" center={center} zoom={11} scrollWheelZoom aria-label="Mapa placówek medycznych">
+  <TileLayer attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>' url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"/>
+  {located.map(item=><Marker key={item.id} position={[item.attributes.latitude,item.attributes.longitude]} icon={markerIcon}>
+   <Popup><div className="map-popup"><strong>{item.attributes.provider||item.attributes.place||'Placówka medyczna'}</strong><span>{[item.attributes.address,item.attributes.locality].filter(Boolean).join(', ')||'Brak adresu'}</span><span>{item.attributes.benefit||'Świadczenie NFZ'}</span><button className="text-button" onClick={()=>onOpen(item)}>Zobacz szczegóły</button></div></Popup>
+  </Marker>)}
+ </MapContainer>;
+}
 function Modal({title, onClose, children}) {
  const ref=useRef(); const closeRef=useRef(onClose); closeRef.current=onClose;
  useEffect(()=>{const previous=document.activeElement;const dialog=ref.current;dialog.showModal();const cancel=e=>{e.preventDefault();closeRef.current();};dialog.addEventListener('cancel',cancel);return()=>{dialog.removeEventListener('cancel',cancel);dialog.close();previous?.focus();};},[]);
@@ -52,59 +73,6 @@ function Profile({user,onUpdate,favorites,onNavigate,onOpen,onSave,busyId}) {
 }
 function Empty({icon='search',title,text,children}) {return <div className="empty"><div className="empty-icon"><Icon name={icon} size={32}/></div><h2>{title}</h2><p className="muted">{text}</p>{children}</div>;}
 function App(){
-<<<<<<< HEAD
- const [province,setProvince]=useState('07');
- const [benefit,setBenefit]=useState('PORADNIA MEDYCYNY SPORTOWEJ');
- const [city,setCity]=useState('');
- const [sort,setSort]=useState('date');
- const [page,setPage]=useState(1);
- const [result,setResult]=useState(null);
- const [error,setError]=useState('');
- const [loading,setLoading]=useState(false);
- async function search(e,nextPage=1){
-  e?.preventDefault();
-  setLoading(true);setError('');
-  try{
-   const params=new URLSearchParams({province,benefit:benefit.trim(),limit:'10',page:String(nextPage),case:'1'});
-   const response=await fetch(`/api/nfz/queues?${params}`);
-   const data=await response.json();
-   if(!response.ok)throw new Error(data.error?.message||`Błąd HTTP ${response.status}`);
-   if(!Array.isArray(data.data))throw new Error('API NFZ zwróciło niepoprawne dane');
-   setResult(data);setPage(nextPage);
-  }catch(err){setError(err.message||'Nie udało się pobrać danych');setResult(null)}
-  finally{setLoading(false)}
- }
- const all=result?.data||[];
- const filtered=all.filter(item=>!city.trim()||String(item.attributes?.locality||'').toLocaleLowerCase('pl').includes(city.trim().toLocaleLowerCase('pl')));
- const shown=[...filtered].sort((a,b)=>{
-  if(sort==='name')return String(a.attributes?.provider||'').localeCompare(String(b.attributes?.provider||''),'pl');
-  if(sort==='city')return String(a.attributes?.locality||'').localeCompare(String(b.attributes?.locality||''),'pl');
-  return (firstDate(a.attributes)||'9999-12-31').localeCompare(firstDate(b.attributes)||'9999-12-31');
- });
- const count=Number(result?.meta?.count||0);
- return <main>
-  <header><h1>Zdrowie w Twoim Mieście</h1><p>Wyszukiwarka świadczeń medycznych NFZ</p></header>
-  <form onSubmit={e=>search(e,1)}>
-   <div className="fields">
-    <label>Województwo<select value={province} onChange={e=>setProvince(e.target.value)}>{provinces.map(([code,name])=><option value={code} key={code}>{name}</option>)}</select></label>
-    <label>Świadczenie (nazwa lub fragment)<input list="benefits" value={benefit} onChange={e=>setBenefit(e.target.value)} placeholder="np. KARDIOLOGICZNA"/><datalist id="benefits">{suggestions.map(x=><option key={x} value={x}/>)}</datalist></label>
-   </div>
-   <button disabled={loading}>{loading?'Pobieranie…':'Szukaj terminów'}</button>
-  </form>
-  {error&&<p className="error" role="alert">{error}</p>}
-  {result&&<section className="results">
-   <div className="resultHead"><div><h2>Wyniki NFZ: {count.toLocaleString('pl-PL')}</h2><p className="muted">Pobrano {all.length} rekordów ze strony {page}. Filtry miasta i sortowanie dotyczą wyłącznie pobranej strony, a nie wszystkich wyników NFZ.</p></div></div>
-   <div className="filters">
-    <label>Filtruj miasto (na tej stronie)<input value={city} onChange={e=>setCity(e.target.value)} placeholder="np. Warszawa"/></label>
-    <label>Sortuj wyniki<select value={sort} onChange={e=>setSort(e.target.value)}><option value="date">Najwcześniejszy termin</option><option value="name">Nazwa placówki A–Z</option><option value="city">Miasto A–Z</option></select></label>
-   </div>
-   <p className="muted">Widoczne placówki: {shown.length}. Brak daty nie oznacza braku świadczenia.</p>
-   {shown.length?shown.map(item=><Facility key={item.id} item={item}/>):<div className="empty">Brak placówek spełniających wybrane kryteria na tej stronie. Zmień miasto, świadczenie lub przejdź do kolejnej strony.</div>}
-   <div className="pager"><button type="button" disabled={loading||page<=1} onClick={()=>search(null,page-1)}>← Poprzednia</button><span>Strona {page}</span><button type="button" disabled={loading||!result.links?.next} onClick={()=>search(null,page+1)}>Następna →</button></div>
-  </section>}
-  <footer>Źródło: publiczne API NFZ. Dane i dostępność terminów mogą się zmieniać — potwierdź termin w placówce.</footer>
- </main>;
-=======
  const [page,setPage]=useState(()=>location.hash.slice(1)||'search');
  const [user,setUser]=useState(null),[ready,setReady]=useState(false),[accountError,setAccountError]=useState(''),[favorites,setFavorites]=useState([]),[favoritesError,setFavoritesError]=useState('');
  const [auth,setAuth]=useState(null),[selected,setSelected]=useState(null),[detailBusy,setDetailBusy]=useState(false),[detailError,setDetailError]=useState(''),[busyId,setBusyId]=useState(null),[toast,setToast]=useState('');
@@ -132,12 +100,11 @@ function App(){
  <section className="results" ref={resultRef} aria-busy={loading}><div className="section-header"><div><h2>{result?'Dostępne placówki':'Znajdź swoją placówkę'}</h2><p className="small muted">{result?`${Number(result.meta?.count||0).toLocaleString('pl-PL')} wyników · ${query.locality||provinces[Number(query.province)-1]}`:'Od wyszukania terminu do kontaktu z przychodnią.'}</p></div>{result&&<span className="sort-label"><Icon name="calendar" size={16}/> Najwcześniejsze terminy według NFZ</span>}</div>{searchError?<div className="error" role="alert"><strong>Nie udało się pobrać terminów.</strong><p>{searchError}</p><button className="button secondary" onClick={()=>search(null)}>Spróbuj ponownie</button></div>:loading?<div className="loading" role="status"><span className="spinner"/>Pobieramy terminy z NFZ…</div>:result?<>{result.data.length?result.data.map(item=><FacilityCard key={item.id} {...cardProps(item)}/>):<Empty title="Nie znaleźliśmy pasujących placówek" text="Spróbuj krótszej nazwy świadczenia, zmień województwo lub usuń miejscowość. Nie wszystkie świadczenia są dostępne w publicznym API NFZ."/>}<div className="pager"><button className="button secondary" disabled={resultPage<=1} onClick={()=>search(null,resultPage-1,query)}>← Poprzednia</button><span>Strona {resultPage} z {Math.max(1,Math.ceil(Number(result.meta?.count||0)/10))}</span><button className="button secondary" disabled={!result.links?.next} onClick={()=>search(null,resultPage+1,query)}>Następna →</button></div></>:<div className="steps-grid">{[['search','01','Wyszukaj świadczenie','Wybierz specjalistę i miasto, w którym szukasz opieki.'],['calendar','02','Porównaj terminy','Sprawdź daty i szczegóły dostępnych placówek.'],['heart','03','Miej kontakt pod ręką','Zapisz przychodnię na koncie i skontaktuj się z rejestracją.']].map(([icon,no,title,text])=><article className="step-card" key={no}><div><span className="tile-icon"><Icon name={icon}/></span><span className="step-number">{no}</span></div><h3>{title}</h3><p>{text}</p></article>)}</div>}</section><div className="data-note"><Icon name="shield" size={20}/><div><strong>Informacje prosto ze źródła</strong><p>Źródło: <a href="https://api.nfz.gov.pl/" target="_blank" rel="noreferrer">publiczne API NFZ</a>. Dostępność może się zmieniać. Potwierdź termin telefonicznie w placówce.</p></div></div></>}
  {current==='profile'&&(user?<Profile user={user} onUpdate={setUser} favorites={favorites} onNavigate={navigate} onOpen={openDetail} onSave={save} busyId={busyId}/>:<><div className="page-title"><span className="eyebrow">TWOJA PRZESTRZEŃ</span><h1>Mój profil</h1><p className="muted">Dane osobowe i ulubione placówki w jednym miejscu.</p></div><Empty icon="user" title={ready?'Poznaj swój profil':'Wczytywanie konta…'} text="Zaloguj się, aby uzupełnić dane i wracać do zapisanych przychodni.">{ready&&<button className="button primary" onClick={()=>setAuth('login')}>Zaloguj się<Icon name="arrow" size={18}/></button>}</Empty></>)}
  {current==='favorites'&&<><div className="page-title"><span className="eyebrow">ZAWSZE POD RĘKĄ</span><h1>Ulubione placówki<span className="blue">.</span></h1><p className="muted">Twoje zapisane poradnie i potrzebne kontakty.</p></div>{user?<><div className="notice favorites-note"><Icon name="info"/><p>To dane z chwili zapisu. Otwórz szczegóły, aby pobrać aktualne informacje z NFZ.</p></div>{favorites.length?favorites.map(item=><FacilityCard key={item.id} {...cardProps(item)}/>):<Empty icon="heart" title="Tu jest miejsce na Twoje placówki" text="Kliknij serce przy wyniku wyszukiwania, aby zapisać placówkę na swoim koncie."><button className="button primary" onClick={()=>navigate('search')}>Znajdź placówkę<Icon name="arrow" size={18}/></button></Empty>}</>:<Empty icon="heart" title="Wracaj do sprawdzonych miejsc" text="Zaloguj się, aby zapisywać placówki i mieć do nich dostęp na swoim koncie."><button className="button primary" onClick={()=>setAuth('login')}>Zaloguj się<Icon name="arrow" size={18}/></button></Empty>}</>}
- {current==='map'&&<><div className="page-title"><span className="eyebrow">OPIEKA W TWOJEJ OKOLICY</span><h1>Mapa placówek<span className="blue">.</span></h1><p className="muted">Przeglądaj przychodnie i poradnie w swojej okolicy.</p></div><section className="map-placeholder"><div className="map-placeholder-grid" aria-hidden="true"/><div className="map-message"><span className="empty-icon"><Icon name="map" size={34}/></span><span className="badge">W przygotowaniu</span><h2>Tu pojawi się mapa placówek</h2><p>Pracujemy nad widokiem, który ułatwi znalezienie opieki w Twojej okolicy. Już teraz możesz przeglądać placówki na liście.</p><button className="button primary" onClick={()=>navigate('search')}>Przejdź do wyszukiwarki<Icon name="arrow" size={18}/></button></div></section></>}
+ {current==='map'&&<><div className="page-title"><span className="eyebrow">OPIEKA W TWOJEJ OKOLICY</span><h1>Mapa placówek<span className="blue">.</span></h1><p className="muted">Placówki z ostatniego wyszukiwania NFZ. Mapa wykorzystuje współrzędne udostępnione przez NFZ.</p></div>{result?<><div className="map-summary"><strong>{result.data.length} placówek na stronie wyników</strong><span>{result.data.filter(item=>Number.isFinite(item.attributes?.latitude)&&Number.isFinite(item.attributes?.longitude)).length} z lokalizacją na mapie</span></div>{result.data.some(item=>Number.isFinite(item.attributes?.latitude)&&Number.isFinite(item.attributes?.longitude))?<FacilityMap items={result.data} onOpen={openDetail}/>:<div className="notice" role="status"><Icon name="info"/><p>NFZ nie udostępnił współrzędnych dla tych wyników. Poniżej możesz sprawdzić adresy i szczegóły placówek.</p></div>}<section className="map-results" aria-label="Lista placówek z wyszukiwania"><h2>Placówki z wyszukiwania</h2>{result.data.map(item=><FacilityCard key={item.id} {...cardProps(item)}/>)}</section></>:<Empty icon="map" title="Najpierw wyszukaj placówki" text="Po wyszukaniu terminów pokażemy tutaj placówki z ich lokalizacjami, jeśli NFZ udostępnia współrzędne."><button className="button primary" onClick={()=>navigate('search')}>Przejdź do wyszukiwarki<Icon name="arrow" size={18}/></button></Empty>}</>}
  </main><footer className="footer"><span>© {new Date().getFullYear()} Zdrowie W Twoim Mieście</span><span>Łatwiejszy dostęp do informacji o opiece zdrowotnej.</span></footer></div>
  {auth&&<Auth mode={auth} setMode={setAuth} onClose={()=>setAuth(null)} onSuccess={u=>{setUser(u);setAccountError('');setAuth(null);navigate('profile');}}/>}
  {selected&&<Modal title="Szczegóły placówki" onClose={()=>{detailId.current++;setSelected(null);}}><span className="badge">Świadczenie NFZ</span><h3 className="detail-name">{selected.attributes.provider||selected.attributes.place}</h3><p className="specialty">{selected.attributes.benefit}</p>{detailBusy&&<p className="small muted" role="status">Aktualizowanie danych z NFZ…</p>}{detailError&&<div className="error" role="alert">{detailError} Wyświetlamy ostatnio dostępne dane.<button className="text-button" onClick={()=>openDetail(selected)}>Ponów pobieranie</button></div>}<div className="detail-date"><Icon name="calendar" size={26}/><Waiting a={selected.attributes}/></div><dl className="detail-list"><div><dt>Adres</dt><dd>{[selected.attributes.address,selected.attributes.locality].filter(Boolean).join(', ')||'Brak danych'}</dd></div><div><dt>Telefon do rejestracji</dt><dd>{selected.attributes.phone?<a href={phoneHref(selected.attributes.phone)}>{selected.attributes.phone}</a>:'Brak numeru telefonu'}</dd></div><div><dt>Miejsce udzielania świadczenia</dt><dd>{selected.attributes.place||'Brak danych'}</dd></div><div><dt>Aktualizacja terminu w NFZ</dt><dd>{selected.attributes.dates?.['date-situation-as-at']||'Brak danych'}</dd></div></dl><h3 className="small">Udogodnienia potwierdzone w NFZ</h3><div className="amenities">{[['ramp','Podjazd'],['elevator','Winda'],['car-park','Parking'],['toilet','Toaleta']].filter(([key])=>selected.attributes[key]==='Y').map(([key,label])=><span key={key}><Icon name="check" size={15}/>{label}</span>)}{!['ramp','elevator','car-park','toilet'].some(key=>selected.attributes[key]==='Y')&&<p className="muted small">Brak potwierdzonych informacji o udogodnieniach.</p>}</div><div className="notice"><Icon name="info"/><p>Termin i zasady przyjęcia potwierdź bezpośrednio w rejestracji placówki.</p></div><button className="button primary full-width" disabled={busyId===selected.id} onClick={()=>save(selected)}><Icon name="heart" size={18}/>{favorites.some(f=>f.id===selected.id)?'Usuń z ulubionych':'Zapisz w ulubionych'}</button></Modal>}
  {toast&&<div className="toast" role="status"><Icon name="info" size={18}/><span>{toast}</span><button className="icon-button" aria-label="Zamknij komunikat" onClick={()=>setToast('')}><Icon name="close" size={17}/></button></div>}
  </div>;
->>>>>>> f425043 (Aktualizacja backendu + UI)
 }
 createRoot(document.getElementById('root')).render(<App/>);

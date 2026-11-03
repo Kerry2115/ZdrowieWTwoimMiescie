@@ -103,6 +103,16 @@ export const nfzQueues = params => cachedJson(
   }
 );
 
+export const nfzQueue = id => cachedJson(
+  `https://api.nfz.gov.pl/app-itl-api/queues/${encodeURIComponent(id)}`,
+  { format: 'json' }
+);
+
+export const nfzBenefits = params => cachedJson(
+  'https://api.nfz.gov.pl/app-itl-api/benefits',
+  { format: 'json', limit: 25, ...params }
+);
+
 export const gusUnits = params => cachedJson(
   'https://bdl.stat.gov.pl/api/v1/units',
   params

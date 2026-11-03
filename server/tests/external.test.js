@@ -72,3 +72,40 @@ test('zewnętrzne błędy HTTP i nieprawidłowy JSON nie są zapisywane w cache'
     db.prepare('DELETE FROM api_cache WHERE cache_key IN (?, ?)').run(...keys);
   }
 });
+
+test('błąd połączenia i timeout zewnętrznego API są zgłaszane bez zapisu do cache', async () => {
+  runMigrations(db);
+  const originalFetch = globalThis.fetch;
+  const connectionUrl = 'https://api.example.test/connection-error';
+  const timeoutUrl = 'https://api.example.test/timeout';
+  const keys = [connectionUrl, timeoutUrl].map(url => new URL(url).toString());
+
+  globalThis.fetch = async (_url, {signal}) => {
+    if (String(_url).includes('connection-error')) throw new TypeError('fetch failed');
+    return new Promise((_resolve, reject) => {
+      signal.addEventListener('abort', () => {
+        const error = new Error('aborted');
+        error.name = 'AbortError';
+        reject(error);
+      }, {once: true});
+    });
+  };
+
+  try {
+    await assert.rejects(cachedJson(connectionUrl, {}), error =>
+      error instanceof ApiError && error.status === 502 &&
+      error.message === 'Nie udało się połączyć z zewnętrznym API'
+    );
+    await assert.rejects(cachedJson(timeoutUrl, {}), error =>
+      error instanceof ApiError && error.status === 504 &&
+      error.message === 'Przekroczono czas odpowiedzi API'
+    );
+    assert.equal(
+      db.prepare('SELECT COUNT(*) AS count FROM api_cache WHERE cache_key IN (?, ?)').get(...keys).count,
+      0
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+    db.prepare('DELETE FROM api_cache WHERE cache_key IN (?, ?)').run(...keys);
+  }
+});

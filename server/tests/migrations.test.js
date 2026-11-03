@@ -48,7 +48,7 @@ test('migracje i dane demonstracyjne działają na pustej bazie', () => {
         'PRAGMA foreign_key_list(local_statistics)'
       ).all().some(key => key.table === 'gus_units' && key.from === 'gus_unit_id');
 
-      assert.equal(migrationCount, 3);
+      assert.equal(migrationCount, 4);
       assert.equal(facilityCount, 1);
       assert.equal(serviceCount, 1);
       assert.equal(triggers, 2);

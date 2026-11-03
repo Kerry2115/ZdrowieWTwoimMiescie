@@ -127,6 +127,44 @@ test('CRUD placówek waliduje dane i zwraca wspólny format odpowiedzi', async (
     assert.equal(unknownRoute.body.error.code, 'ROUTE_NOT_FOUND');
 
     const originalFetch = globalThis.fetch;
+    const outageBenefit = `api-outage-${externalId}`;
+    globalThis.fetch = (url, options) => {
+      if (String(url).startsWith(baseUrl)) return originalFetch(url, options);
+      throw new TypeError('fetch failed');
+    };
+    try {
+      const unavailable = await request(
+        `/api/nfz/queues?benefit=${encodeURIComponent(outageBenefit)}`
+      );
+      assert.equal(unavailable.response.status, 502);
+      assert.equal(unavailable.body.error.code, 'UPSTREAM_ERROR');
+      assert.equal(
+        unavailable.body.error.message,
+        'Nie udało się połączyć z zewnętrznym API'
+      );
+    } finally {
+      globalThis.fetch = originalFetch;
+      db.prepare('DELETE FROM api_cache WHERE cache_key LIKE ?')
+        .run(`%${outageBenefit}%`);
+    }
+
+    const detailId = `detail-${externalId}`;
+    const detailUrl = new URL(
+      `https://api.nfz.gov.pl/app-itl-api/queues/${detailId}`
+    );
+    detailUrl.searchParams.set('format', 'json');
+    db.prepare(`
+      INSERT OR REPLACE INTO api_cache (cache_key, payload, expires_at)
+      VALUES (?, ?, ?)
+    `).run(
+      detailUrl.toString(),
+      JSON.stringify({ data: { id: detailId, attributes: { provider: 'Szczegóły testowe' } } }),
+      new Date(Date.now() + 60_000).toISOString()
+    );
+    const details = await request(`/api/nfz/queues/${detailId}`);
+    assert.equal(details.response.status, 200);
+    assert.equal(details.body.data.attributes.provider, 'Szczegóły testowe');
+
     const importedExternalId = `api-import-${externalId}`;
     const importedGusUnitId = `gus-${externalId}`;
     const gusSearchName = `GUSIntegration${externalId}`;
@@ -206,6 +244,7 @@ test('CRUD placówek waliduje dane i zwraca wspólny format odpowiedzi', async (
       globalThis.fetch = originalFetch;
       db.prepare('DELETE FROM facilities WHERE source = ? AND external_id = ?')
         .run('nfz', importedExternalId);
+      db.prepare('DELETE FROM api_cache WHERE cache_key = ?').run(detailUrl.toString());
       db.prepare('DELETE FROM api_cache WHERE cache_key LIKE ?')
         .run(`%integration-${externalId}%`);
       db.prepare('DELETE FROM gus_units WHERE id = ?').run(importedGusUnitId);
